@@ -4,67 +4,17 @@ import sys
 import os
 
 async def main():
-    # Wait for browser initialization
-    await asyncio.sleep(0.1)
-    
     pygame.init()
 
     # --- Config ---
     FPS = 60
     PLAYER_SPEED = 4
 
-    # --- Detect iPad/Tablet ---
-    info = pygame.display.Info()
-    screen_width, screen_height = info.current_w, info.current_h
-    
-    # iPad detection based on common iPad resolutions and aspect ratios
-    is_ipad = False
-    ipad_resolutions = [
-        (1024, 768), (1024, 1366), (1366, 1024),  # iPad Mini, iPad Pro
-        (768, 1024), (834, 1194), (1194, 834),    # iPad Air, iPad Pro
-        (810, 1080), (1080, 810),                 # iPad 10th gen
-        (744, 1133), (1133, 744)                  # iPad Pro 11"
-    ]
-    
-    # Check if current resolution matches common iPad resolutions
-    for w, h in ipad_resolutions:
-        if (abs(screen_width - w) <= 10 and abs(screen_height - h) <= 10) or \
-           (abs(screen_width - h) <= 10 and abs(screen_height - w) <= 10):
-            is_ipad = True
-            break
-    
-    # Also check by aspect ratio (common iPad aspect ratios)
-    aspect_ratio = screen_width / screen_height
-    ipad_aspects = [4/3, 3/4, 0.75, 1.333]
-    for ipad_aspect in ipad_aspects:
-        if abs(aspect_ratio - ipad_aspect) < 0.1:
-            is_ipad = True
-            break
-
     # --- Web-Compatible Setup ---
-    if is_ipad:
-        # Use full screen for iPad
-        WIDTH, HEIGHT = screen_width, screen_height
-        screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
-        print(f"iPad mode detected: {WIDTH}x{HEIGHT}")
-    else:
-        WIDTH, HEIGHT = 1200, 800
-        screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
-    
+    WIDTH, HEIGHT = 1200, 800
+    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("Pitchfork Path")
     clock = pygame.time.Clock()
-
-    # --- iPad-Specific Settings ---
-    if is_ipad:
-        # Adjust speeds and sizes for touch interface
-        PLAYER_SPEED = 6  # Slightly faster for larger screen
-        SCALE = 2.5       # Larger tiles for iPad
-        FONT_SCALE = 1.3  # Larger text for iPad
-        TOUCH_CONTROLS = True
-    else:
-        SCALE = 2
-        FONT_SCALE = 1.0
-        TOUCH_CONTROLS = False
 
     # --- Debug ---
     DEBUG_INTERACTION = False
@@ -72,6 +22,7 @@ async def main():
 
     # --- Tile Scaling ---
     BASE_TILE_SIZE = 64
+    SCALE = 2
     TILE_SIZE = BASE_TILE_SIZE * SCALE
 
     # --- Base Fork Layout ---
@@ -137,15 +88,6 @@ async def main():
             img = pygame.image.load(filename).convert_alpha()
             img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
             tiles[i] = img
-        else:
-            # Create placeholder tile if file doesn't exist
-            surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-            color = (min(255, i * 10), min(255, i * 5), min(255, i * 7), 255)
-            surf.fill(color)
-            font = pygame.font.Font(None, 24)
-            text = font.render(str(i), True, (255, 255, 255))
-            surf.blit(text, (TILE_SIZE//2 - 10, TILE_SIZE//2 - 10))
-            tiles[i] = surf
 
     def is_walkable_pixel(x, y):
         tile_x = (x - offset_x) // TILE_SIZE
@@ -191,24 +133,7 @@ async def main():
     # --- Character Class ---
     def load_spritesheet(filename, frame_width, frame_height, scale=1.5):
         if not os.path.exists(filename):
-            # Create placeholder spritesheet
-            frames = []
-            for r in range(4):  # 4 directions
-                row_frames = []
-                for c in range(4):  # 4 frames per direction
-                    surf = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
-                    color = (100 + c * 20, 150 + r * 20, 200, 200)
-                    surf.fill(color)
-                    pygame.draw.circle(surf, (255, 255, 255), 
-                                     (frame_width//2, frame_height//2), 
-                                     frame_width//3)
-                    scaled_surf = pygame.transform.scale(surf, 
-                                                       (int(frame_width * scale), 
-                                                        int(frame_height * scale)))
-                    row_frames.append(scaled_surf)
-                frames.append(row_frames)
-            return frames
-            
+            return [[]]
         sheet = pygame.image.load(filename).convert_alpha()
         sheet_rect = sheet.get_rect()
         rows = sheet_rect.height // frame_height
@@ -247,7 +172,7 @@ async def main():
             
             frames = self.get_frames()
             if frames and frames[0]:
-                self.image = frames[0][0]
+                self.image = frames[0]
             else:
                 self.image = pygame.Surface((self.frame_width, self.frame_height), pygame.SRCALPHA)
                 self.image.fill((255, 0, 0, 150))
@@ -314,7 +239,7 @@ async def main():
         "Unarmed_Run_without_shadow.png", 
         FRAME_SIZE, 
         (start_x - FRAME_SIZE[0] // 2, start_y - FRAME_SIZE[1] // 2), 
-        scale=3 if not is_ipad else 3.5  # Larger character on iPad
+        scale=3
     )
 
     # --- Buildings ---
@@ -331,15 +256,6 @@ async def main():
             else:
                 img = pygame.transform.scale(img, (int(TILE_SIZE * 1.5), int(TILE_SIZE * 1.7)))
             building_images[name] = img
-        else:
-            # Create placeholder building
-            surf = pygame.Surface((int(TILE_SIZE * 1.6), int(TILE_SIZE * 1.8)), pygame.SRCALPHA)
-            color = (100, 150, 200, 255) if name == "cathedral" else (200, 150, 100, 255) if name == "mosque" else (150, 200, 150, 255)
-            surf.fill(color)
-            font = pygame.font.Font(None, 30)
-            text = font.render(name, True, (255, 255, 255))
-            surf.blit(text, (20, 20))
-            building_images[name] = surf
 
     # --- Building placement ---
     top_row = None
@@ -412,13 +328,6 @@ async def main():
             img = pygame.image.load(filename).convert_alpha()
             img = pygame.transform.scale(img, (int(TILE_SIZE * 0.5), int(TILE_SIZE * 1.15)))
             npc_images[name] = img
-        else:
-            # Create placeholder NPC
-            surf = pygame.Surface((int(TILE_SIZE * 0.5), int(TILE_SIZE * 1.15)), pygame.SRCALPHA)
-            color = (200, 100, 100, 255) if name == "cathedral" else (100, 200, 100, 255) if name == "mosque" else (100, 100, 200, 255)
-            surf.fill(color)
-            pygame.draw.circle(surf, (255, 255, 255), (int(TILE_SIZE * 0.25), int(TILE_SIZE * 0.25)), int(TILE_SIZE * 0.2))
-            npc_images[name] = surf
 
     for (name, _, rect) in buildings:
         if name in npc_images:
@@ -435,30 +344,6 @@ async def main():
             )
             npc_data.append((name, img, npc_rect, dialogue_hitbox))
 
-    # --- Touch Controls for iPad ---
-    touch_controls = []
-    if TOUCH_CONTROLS:
-        # Create virtual D-pad
-        control_size = TILE_SIZE * 1.2
-        padding = TILE_SIZE // 2
-        
-        # Left side D-pad
-        up_rect = pygame.Rect(padding, HEIGHT - control_size * 3 - padding, control_size, control_size)
-        left_rect = pygame.Rect(padding - control_size, HEIGHT - control_size * 2 - padding, control_size, control_size)
-        down_rect = pygame.Rect(padding, HEIGHT - control_size * 2 - padding, control_size, control_size)
-        right_rect = pygame.Rect(padding + control_size, HEIGHT - control_size * 2 - padding, control_size, control_size)
-        
-        touch_controls = [
-            ("up", up_rect, pygame.K_w),
-            ("left", left_rect, pygame.K_a),
-            ("down", down_rect, pygame.K_s),
-            ("right", right_rect, pygame.K_d)
-        ]
-        
-        # Action button (space equivalent)
-        action_rect = pygame.Rect(WIDTH - control_size - padding, HEIGHT - control_size - padding, control_size, control_size)
-        touch_controls.append(("action", action_rect, pygame.K_SPACE))
-
     # --- Dialogue State ---
     active_dialogue = None
     dialogue_lines = []
@@ -466,11 +351,8 @@ async def main():
     active_npc = None
 
     # --- Interaction Indicator ---
-    interaction_font = pygame.font.SysFont(None, int(30 * FONT_SCALE))
+    interaction_font = pygame.font.SysFont(None, 30)
     interaction_text = interaction_font.render("Appuyez sur ESPACE pour parler", True, (255, 255, 255))
-    if TOUCH_CONTROLS:
-        interaction_text = interaction_font.render("Touchez pour parler", True, (255, 255, 255))
-    
     interaction_indicator_visible = False
     current_npc = None
 
@@ -530,7 +412,7 @@ async def main():
         return lines
 
     def draw_dialogue_box(text, npc_rect):
-        font = pygame.font.SysFont(None, int(30 * FONT_SCALE))
+        font = pygame.font.SysFont(None, 30)
         
         max_box_width = int(WIDTH * 0.5)
         padding = 20
@@ -561,7 +443,7 @@ async def main():
             screen.blit(text_surface, (box_x + padding, box_y + padding + i * line_height))
 
     def draw_journal_box(text):
-        font = pygame.font.SysFont(None, int(36 * FONT_SCALE))
+        font = pygame.font.SysFont(None, 36)
         lines = []
         words = text.split()
         line = ""
@@ -606,77 +488,17 @@ async def main():
         
         screen.blit(interaction_text, (indicator_x, indicator_y))
 
-    def draw_touch_controls():
-        for name, rect, key in touch_controls:
-            # Draw semi-transparent circle for each control
-            s = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-            pygame.draw.circle(s, (100, 100, 100, 150), (rect.width//2, rect.height//2), rect.width//2)
-            screen.blit(s, rect.topleft)
-            
-            # Draw direction arrows or action symbol
-            font = pygame.font.SysFont(None, int(40 * FONT_SCALE))
-            if name == "up":
-                text = font.render("↑", True, (255, 255, 255))
-            elif name == "left":
-                text = font.render("←", True, (255, 255, 255))
-            elif name == "down":
-                text = font.render("↓", True, (255, 255, 255))
-            elif name == "right":
-                text = font.render("→", True, (255, 255, 255))
-            else:  # action
-                text = font.render("⚡", True, (255, 255, 255))
-            
-            text_rect = text.get_rect(center=rect.center)
-            screen.blit(text, text_rect)
-
-    # --- Touch Input Handling ---
-    def handle_touch_input():
-        events = []
-        keys_pressed = set()
-        
-        for event in pygame.event.get():
-            events.append(event)
-            if event.type == pygame.QUIT:
-                return False, events, keys_pressed
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    return False, events, keys_pressed
-                keys_pressed.add(event.key)
-            elif event.type == pygame.MOUSEBUTTONDOWN and TOUCH_CONTROLS:
-                pos = pygame.mouse.get_pos()
-                for name, rect, key in touch_controls:
-                    if rect.collidepoint(pos):
-                        keys_pressed.add(key)
-                        break
-                # Also check if tapping near an NPC for interaction
-                if not active_dialogue:
-                    for name, img, npc_rect, dialogue_hitbox in npc_data:
-                        if dialogue_hitbox.collidepoint(pos):
-                            keys_pressed.add(pygame.K_SPACE)
-                            break
-        
-        return True, events, keys_pressed
-
     # --- Main Game Loop ---
     running = True
-    frame_count = 0
-    
     while running:
         dt = clock.tick(FPS)
-        frame_count += 1
         
-        # Force async yield regularly for pygbag compatibility
-        if frame_count % 3 == 0:
-            await asyncio.sleep(0)
-        
-        # Handle input (keyboard + touch)
-        running, events, pressed_keys = handle_touch_input()
-        if not running:
-            break
-
-        # Process events
-        for event in events:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
             if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
                 if event.key == pygame.K_c:
                     DEBUG_COLLISION = not DEBUG_COLLISION
                 if event.key == pygame.K_SPACE:
@@ -700,7 +522,7 @@ async def main():
                                 active_npc = npc_rect
                                 break
 
-        # Movement - check all pressed keys
+        # Movement
         keys = pygame.key.get_pressed()
         dx = dy = 0
         direction = character.direction
@@ -755,10 +577,6 @@ async def main():
         
         character.draw(screen)
         
-        # Draw touch controls if on iPad
-        if TOUCH_CONTROLS:
-            draw_touch_controls()
-        
         if interaction_indicator_visible and current_npc and not active_dialogue:
             draw_interaction_indicator(current_npc)
         
@@ -772,6 +590,7 @@ async def main():
             pygame.draw.rect(screen, (255, 0, 0), character.rect, 2)
         
         pygame.display.flip()
+        await asyncio.sleep(0)  # Important for web
 
     pygame.quit()
 
