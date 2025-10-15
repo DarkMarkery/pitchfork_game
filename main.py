@@ -4,6 +4,9 @@ import sys
 import os
 
 async def main():
+    # Wait for browser initialization
+    await asyncio.sleep(0.1)
+    
     pygame.init()
 
     # --- Config ---
@@ -134,6 +137,15 @@ async def main():
             img = pygame.image.load(filename).convert_alpha()
             img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
             tiles[i] = img
+        else:
+            # Create placeholder tile if file doesn't exist
+            surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+            color = (min(255, i * 10), min(255, i * 5), min(255, i * 7), 255)
+            surf.fill(color)
+            font = pygame.font.Font(None, 24)
+            text = font.render(str(i), True, (255, 255, 255))
+            surf.blit(text, (TILE_SIZE//2 - 10, TILE_SIZE//2 - 10))
+            tiles[i] = surf
 
     def is_walkable_pixel(x, y):
         tile_x = (x - offset_x) // TILE_SIZE
@@ -179,7 +191,24 @@ async def main():
     # --- Character Class ---
     def load_spritesheet(filename, frame_width, frame_height, scale=1.5):
         if not os.path.exists(filename):
-            return [[]]
+            # Create placeholder spritesheet
+            frames = []
+            for r in range(4):  # 4 directions
+                row_frames = []
+                for c in range(4):  # 4 frames per direction
+                    surf = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
+                    color = (100 + c * 20, 150 + r * 20, 200, 200)
+                    surf.fill(color)
+                    pygame.draw.circle(surf, (255, 255, 255), 
+                                     (frame_width//2, frame_height//2), 
+                                     frame_width//3)
+                    scaled_surf = pygame.transform.scale(surf, 
+                                                       (int(frame_width * scale), 
+                                                        int(frame_height * scale)))
+                    row_frames.append(scaled_surf)
+                frames.append(row_frames)
+            return frames
+            
         sheet = pygame.image.load(filename).convert_alpha()
         sheet_rect = sheet.get_rect()
         rows = sheet_rect.height // frame_height
@@ -218,7 +247,7 @@ async def main():
             
             frames = self.get_frames()
             if frames and frames[0]:
-                self.image = frames[0]
+                self.image = frames[0][0]
             else:
                 self.image = pygame.Surface((self.frame_width, self.frame_height), pygame.SRCALPHA)
                 self.image.fill((255, 0, 0, 150))
@@ -302,6 +331,15 @@ async def main():
             else:
                 img = pygame.transform.scale(img, (int(TILE_SIZE * 1.5), int(TILE_SIZE * 1.7)))
             building_images[name] = img
+        else:
+            # Create placeholder building
+            surf = pygame.Surface((int(TILE_SIZE * 1.6), int(TILE_SIZE * 1.8)), pygame.SRCALPHA)
+            color = (100, 150, 200, 255) if name == "cathedral" else (200, 150, 100, 255) if name == "mosque" else (150, 200, 150, 255)
+            surf.fill(color)
+            font = pygame.font.Font(None, 30)
+            text = font.render(name, True, (255, 255, 255))
+            surf.blit(text, (20, 20))
+            building_images[name] = surf
 
     # --- Building placement ---
     top_row = None
@@ -374,6 +412,13 @@ async def main():
             img = pygame.image.load(filename).convert_alpha()
             img = pygame.transform.scale(img, (int(TILE_SIZE * 0.5), int(TILE_SIZE * 1.15)))
             npc_images[name] = img
+        else:
+            # Create placeholder NPC
+            surf = pygame.Surface((int(TILE_SIZE * 0.5), int(TILE_SIZE * 1.15)), pygame.SRCALPHA)
+            color = (200, 100, 100, 255) if name == "cathedral" else (100, 200, 100, 255) if name == "mosque" else (100, 100, 200, 255)
+            surf.fill(color)
+            pygame.draw.circle(surf, (255, 255, 255), (int(TILE_SIZE * 0.25), int(TILE_SIZE * 0.25)), int(TILE_SIZE * 0.2))
+            npc_images[name] = surf
 
     for (name, _, rect) in buildings:
         if name in npc_images:
@@ -586,14 +631,16 @@ async def main():
 
     # --- Touch Input Handling ---
     def handle_touch_input():
+        events = []
         keys_pressed = set()
         
         for event in pygame.event.get():
+            events.append(event)
             if event.type == pygame.QUIT:
-                return False, keys_pressed
+                return False, events, keys_pressed
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    return False, keys_pressed
+                    return False, events, keys_pressed
                 keys_pressed.add(event.key)
             elif event.type == pygame.MOUSEBUTTONDOWN and TOUCH_CONTROLS:
                 pos = pygame.mouse.get_pos()
@@ -608,45 +655,50 @@ async def main():
                             keys_pressed.add(pygame.K_SPACE)
                             break
         
-        return True, keys_pressed
+        return True, events, keys_pressed
 
     # --- Main Game Loop ---
     running = True
+    frame_count = 0
+    
     while running:
         dt = clock.tick(FPS)
+        frame_count += 1
+        
+        # Force async yield regularly for pygbag compatibility
+        if frame_count % 3 == 0:
+            await asyncio.sleep(0)
         
         # Handle input (keyboard + touch)
-        running, keys_pressed = handle_touch_input()
+        running, events, pressed_keys = handle_touch_input()
         if not running:
             break
 
-        # Check for specific key events in the pressed keys
-        if pygame.K_ESCAPE in keys_pressed:
-            running = False
-            
-        if pygame.K_c in keys_pressed:
-            DEBUG_COLLISION = not DEBUG_COLLISION
-            
-        if pygame.K_SPACE in keys_pressed:
-            if show_journal:
-                show_journal = False
-                continue
-            if active_dialogue:
-                dialogue_index += 1
-                if dialogue_index >= len(dialogue_lines):
-                    talked_to.add(active_dialogue)
-                    active_dialogue = None
-                    if len(talked_to) == 3:
-                        show_journal = True
-                continue
-            else:
-                for name, img, npc_rect, dialogue_hitbox in npc_data:
-                    if character.rect.colliderect(dialogue_hitbox):
-                        active_dialogue = name
-                        dialogue_lines = npc_dialogues[name]
-                        dialogue_index = 0
-                        active_npc = npc_rect
-                        break
+        # Process events
+        for event in events:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_c:
+                    DEBUG_COLLISION = not DEBUG_COLLISION
+                if event.key == pygame.K_SPACE:
+                    if show_journal:
+                        show_journal = False
+                        continue
+                    if active_dialogue:
+                        dialogue_index += 1
+                        if dialogue_index >= len(dialogue_lines):
+                            talked_to.add(active_dialogue)
+                            active_dialogue = None
+                            if len(talked_to) == 3:
+                                show_journal = True
+                        continue
+                    else:
+                        for name, img, npc_rect, dialogue_hitbox in npc_data:
+                            if character.rect.colliderect(dialogue_hitbox):
+                                active_dialogue = name
+                                dialogue_lines = npc_dialogues[name]
+                                dialogue_index = 0
+                                active_npc = npc_rect
+                                break
 
         # Movement - check all pressed keys
         keys = pygame.key.get_pressed()
@@ -720,7 +772,6 @@ async def main():
             pygame.draw.rect(screen, (255, 0, 0), character.rect, 2)
         
         pygame.display.flip()
-        await asyncio.sleep(0)  # Important for web
 
     pygame.quit()
 
